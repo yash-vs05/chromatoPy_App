@@ -70,6 +70,15 @@ def main() -> int:
         (project_root / "src" / "chromatopy" / "oof.wav", "chromatopy"),
         (project_root / "Data Input Templates", "Data Input Templates"),
     ]
+    icon_args = []
+    if sys.platform == "darwin":
+        icon_path = project_root / "misc" / "chromatopy_icon.icns"
+        if icon_path.exists():
+            icon_args.append(f"--icon={icon_path}")
+    elif sys.platform.startswith("win"):
+        icon_path = project_root / "misc" / "chromatopy_icon.ico"
+        if icon_path.exists():
+            icon_args.append(f"--icon={icon_path}")
 
     pyinstaller_args = [
         str(project_root / "app.py"),
@@ -79,7 +88,8 @@ def main() -> int:
         "--onedir",
         "--name=chromatoPy-desktop",
         f"--paths={src_dir}",
-        f"--icon={project_root / 'misc' / 'chromatopy_icon.icns'}",
+        # f"--icon={project_root / 'misc' / 'chromatopy_icon.icns'}",
+        *icon_args,
         "--collect-submodules=chromatopy.gui",
         "--collect-submodules=chromatopy.utils",
         # "--collect-all=PySide6",
