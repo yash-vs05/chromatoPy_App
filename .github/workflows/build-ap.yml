@@ -17,18 +17,13 @@ jobs:
         include:
           - os: macos-14
             artifact_name: chromatoPy-desktop-macos-apple-silicon
-            archive_name: chromatoPy-desktop-macos-apple-silicon.zip
+            archive_name: chromatoPy-desktop-macos-apple-silicon.dmg
             shell: bash
 
           - os: windows-latest
             artifact_name: chromatoPy-desktop-windows
             archive_name: chromatoPy-desktop-windows.zip
             shell: pwsh
-
-          - os: ubuntu-latest
-            artifact_name: chromatoPy-desktop-linux
-            archive_name: chromatoPy-desktop-linux.tar.gz
-            shell: bash
 
     defaults:
       run:
@@ -48,19 +43,6 @@ jobs:
         run: uv venv .venv --python 3.11
 
       - name: Install package and build dependencies
-        if: runner.os != 'Linux'
-        run: |
-          uv pip install -e .
-          uv pip install pyinstaller
-
-      - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xfixes0
-
-      - name: Install package and build dependencies on Linux
-        if: runner.os == 'Linux'
         run: |
           uv pip install -e .
           uv pip install pyinstaller
@@ -76,22 +58,20 @@ jobs:
       - name: Build app
         run: uv run python build_app.py
 
-      - name: Package macOS app
+      - name: Package macOS app as DMG
         if: runner.os == 'macOS'
         run: |
-          cd build/dist
-          ditto -c -k --sequesterRsrc --keepParent chromatoPy-desktop.app ../../${{ matrix.archive_name }}
+          hdiutil create \
+            -volname "chromatoPy" \
+            -srcfolder "build/dist/chromatoPy-desktop.app" \
+            -ov \
+            -format UDZO \
+            "${{ matrix.archive_name }}"
 
       - name: Package Windows app
         if: runner.os == 'Windows'
         run: |
           Compress-Archive -Path build/dist/chromatoPy-desktop -DestinationPath ${{ matrix.archive_name }}
-
-      - name: Package Linux app
-        if: runner.os == 'Linux'
-        run: |
-          cd build/dist
-          tar -czf ../../${{ matrix.archive_name }} chromatoPy-desktop
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
