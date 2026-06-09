@@ -1,5 +1,5 @@
 # Change this number each time
-new_version_number="0.1.7"
+new_version_number="0.1.8"
 
 source ~/uv-chromatopy/bin/activate
 cd /Users/gerard/Documents/GitHub/chromatoPy_App

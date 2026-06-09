@@ -1,6 +1,6 @@
 [![ChromatoPy Logo](misc/chromatoPy.png)](https://github.com/GerardOtiniano/chromatoPy/blob/2b36a74ed639d5c30ae1e143843c1532b0a84237/misc/chromatoPy.png)
 
-# chromatoPy App (v0.1.7)
+# chromatoPy App (v0.1.8)
 
 Test repository for chromatoPy application (windows and mac)
 
