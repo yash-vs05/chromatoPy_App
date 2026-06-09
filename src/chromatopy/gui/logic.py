@@ -7,7 +7,9 @@ import json
 import os
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+from scipy.integrate import simpson
 
 from ..FID.FID_integration import integration as fid_integration
 from ..hplc_integration import hplc_integration
@@ -295,6 +297,135 @@ def _resolve_hplc_peak_area_file(output_location: str) -> Path:
     raise ValueError(
         "Could not find results_peak_area.csv in the selected folder or its Output_chromatoPy subfolder."
     )
+
+
+def _resolve_hplc_individual_samples_folder(output_location: str) -> tuple[Path, Path]:
+    if not output_location:
+        raise ValueError("Select the folder containing HPLC output data.")
+
+    output_path = Path(output_location).expanduser()
+    if not output_path.is_dir():
+        raise ValueError(f"Provided path is not a valid directory: {output_path}")
+
+    candidates = [
+        output_path if output_path.name == "Individual Samples" else None,
+        output_path / "Individual Samples",
+        output_path / "Output_chromatoPy" / "Individual Samples",
+    ]
+    for candidate in candidates:
+        if candidate is not None and candidate.is_dir():
+            return candidate, candidate.parent
+
+    raise ValueError(
+        "Could not find the HPLC Individual Samples folder in the selected location."
+    )
+
+
+def _first_number(value, default=np.nan) -> float:
+    if isinstance(value, list):
+        if not value:
+            return float(default)
+        value = value[0]
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _first_fit_axis(value) -> np.ndarray:
+    if not isinstance(value, list) or not value:
+        return np.asarray([], dtype=float)
+    first = value[0]
+    if isinstance(first, list):
+        return np.asarray(first, dtype=float)
+    return np.asarray(value, dtype=float)
+
+
+def _gaussian_peak_area_distribution(peak: dict, n_draws: int = 1000) -> tuple[float, float, float]:
+    area = _first_number(peak.get("Area"), default=0.0)
+    params = peak.get("Model Parameters", {})
+    amp = _first_number(params.get("Amplitude"))
+    cen = _first_number(params.get("Center"))
+    wid = _first_number(params.get("Width"))
+    amp_unc = _first_number(params.get("Amplitude Unc"))
+    cen_unc = _first_number(params.get("Center Unc"))
+    wid_unc = _first_number(params.get("Width Unc"))
+    x_values = _first_fit_axis(peak.get("Fit", {}).get("x"))
+
+    values = [amp, cen, wid, amp_unc, cen_unc, wid_unc]
+    if x_values.size < 2 or not all(np.isfinite(value) for value in values) or wid <= 0:
+        return np.nan, area, np.nan
+
+    rng = np.random.default_rng(0)
+    draws = rng.normal(
+        loc=np.asarray([amp, cen, wid], dtype=float),
+        scale=np.asarray([amp_unc, cen_unc, wid_unc], dtype=float),
+        size=(n_draws, 3),
+    )
+    draws[:, 0] = np.clip(draws[:, 0], 0.0, None)
+    draws[:, 2] = np.clip(draws[:, 2], np.finfo(float).eps, None)
+
+    areas = []
+    for batch_start in range(0, n_draws, 100):
+        batch = draws[batch_start : batch_start + 100]
+        scaled_x = (x_values[None, :] - batch[:, 1, None]) / batch[:, 2, None]
+        y_values = batch[:, 0, None] * np.exp(-0.5 * scaled_x * scaled_x)
+        batch_areas = simpson(y_values, x=x_values, axis=1)
+        areas.extend(np.maximum(batch_areas, 0.0))
+
+    low, median, high = np.nanpercentile(np.asarray(areas, dtype=float), [2.5, 50.0, 97.5])
+    return float(low), float(median), float(high)
+
+
+def _iter_hplc_peak_entries(sample_data: dict):
+    for group_name, group_data in sample_data.items():
+        if group_name == "Sample Name" or not isinstance(group_data, dict):
+            continue
+        for peak_name, peak_data in group_data.items():
+            if isinstance(peak_data, dict):
+                yield str(peak_name), peak_data
+            elif isinstance(peak_data, (int, float)) and float(peak_data) == 0.0:
+                yield str(peak_name), None
+
+
+def calculate_hplc_peak_area_confidence_intervals(output_location: str) -> dict:
+    samples_folder, output_dir = _resolve_hplc_individual_samples_folder(output_location)
+    sample_files = sorted(samples_folder.glob("*.json"))
+    if not sample_files:
+        raise ValueError(f"No sample JSON files were found in {samples_folder}.")
+
+    rows = []
+    peak_order = []
+    seen_peaks = set()
+    for sample_file in sample_files:
+        with sample_file.open("r", encoding="utf-8") as handle:
+            sample_data = json.load(handle)
+        row = {"Sample Name": sample_data.get("Sample Name", sample_file.stem)}
+        for peak_name, peak_data in _iter_hplc_peak_entries(sample_data):
+            if peak_name not in seen_peaks:
+                seen_peaks.add(peak_name)
+                peak_order.append(peak_name)
+            if peak_data is None:
+                low, median, high = 0.0, 0.0, 0.0
+            else:
+                low, median, high = _gaussian_peak_area_distribution(peak_data)
+            row[f"{peak_name} low"] = low
+            row[f"{peak_name} median"] = median
+            row[f"{peak_name} high"] = high
+        rows.append(row)
+
+    columns = ["Sample Name"]
+    for peak_name in peak_order:
+        columns.extend([f"{peak_name} low", f"{peak_name} median", f"{peak_name} high"])
+    df = pd.DataFrame(rows).reindex(columns=columns)
+    output_path = output_dir / "chromatopy_peak_area_95ci.csv"
+    df.to_csv(output_path, index=False)
+    return {
+        "input_path": str(samples_folder),
+        "peak_area_ci_path": str(output_path),
+        "rows": len(df),
+        "peaks": len(peak_order),
+    }
 
 
 def calculate_hplc_fractional_abundance(output_location: str) -> dict:

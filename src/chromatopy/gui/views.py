@@ -36,6 +36,7 @@ from .logic import (
     build_general_summary,
     calculate_hplc_fractional_abundance,
     calculate_hplc_indices,
+    calculate_hplc_peak_area_confidence_intervals,
     collect_general_header_options,
     detect_general_window_bounds,
     integration_file_status,
@@ -629,6 +630,9 @@ class PostProcessingDialog(QDialog):
         indices_button = QPushButton("Calculate Indices")
         indices_button.clicked.connect(self._calculate_indices)
         action_row.addWidget(indices_button)
+        peak_ci_button = QPushButton("Calculate Peak Area 95% CI")
+        peak_ci_button.clicked.connect(self._calculate_peak_area_ci)
+        action_row.addWidget(peak_ci_button)
         action_row.addStretch(1)
         layout.addLayout(action_row)
 
@@ -677,6 +681,20 @@ class PostProcessingDialog(QDialog):
             f"Saved: {result['indices_path']}\n"
             f"Saved: {result['meth_set_path']}\n"
             f"Saved: {result['cyc_set_path']}"
+        )
+
+    def _calculate_peak_area_ci(self):
+        try:
+            QApplication.setOverrideCursor(WaitCursor)
+            result = calculate_hplc_peak_area_confidence_intervals(self.output_location_edit.text().strip())
+        except Exception as exc:
+            QMessageBox.critical(self, "Peak area CI calculation failed", str(exc))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.log.appendPlainText(
+            f"Calculated peak area 95% CI for {result['rows']} sample(s) and {result['peaks']} peak(s).\n"
+            f"Saved: {result['peak_area_ci_path']}"
         )
 
 
