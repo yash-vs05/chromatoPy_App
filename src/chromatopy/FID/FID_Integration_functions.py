@@ -307,13 +307,13 @@ def calculate_boundaries_acceleration(x, y, ind_peak, smoothing_params, pk_sns):
 #     return A, B
 
 def fit_gaussians(x_full, y_full, ind_peak, peaks, smoothing_params, pk_sns, gi, mode="both"):
-    if mode not in {"single", "multi", "both"}:
-        raise ValueError("mode must be 'single', 'multi', or 'both'")
+    if mode not in {"single", "multi", "both", "asymmetric", "asymmetric_or_multi"}:
+        raise ValueError("mode must be 'single', 'multi', 'both', 'asymmetric', or 'asymmetric_or_multi'")
     # figy = plt.figure()
     results = []
     
     # --- MULTI-GAUSSIAN ---
-    if mode in {"multi", "both"}:
+    if mode in {"multi", "both", "asymmetric_or_multi"}:
         result = _fit_multi_gaussian(x_full, y_full, ind_peak, peaks, smoothing_params, pk_sns, gi)
         if result is not None:
             best_x, best_fit_y, best_fit_params, best_fit_params_error, best_error, best_idx_interest = result
@@ -342,19 +342,20 @@ def fit_gaussians(x_full, y_full, ind_peak, peaks, smoothing_params, pk_sns, gi,
                 "multi_flag": False,
                 "idx_interest": None})
 
-    # --- ASYMMETRIC MODEL (always run) ---
-    result = _fit_asymmetric_gaussian(x_full, y_full, ind_peak, smoothing_params, pk_sns, gi, current_best_error=float("inf"))
-    if result is not None:
-        best_x, best_fit_y, best_fit_params, best_fit_params_error, best_error = result
-        results.append({
-            "name": "asymmetric",
-            "x": best_x,
-            "y": best_fit_y,
-            "params": best_fit_params,
-            "pcov": best_fit_params_error,
-            "error": best_error,
-            "multi_flag": False,
-            "idx_interest": None})
+    # --- ASYMMETRIC MODEL ---
+    if mode in {"asymmetric", "asymmetric_or_multi", "both"}:
+        result = _fit_asymmetric_gaussian(x_full, y_full, ind_peak, smoothing_params, pk_sns, gi, current_best_error=float("inf"))
+        if result is not None:
+            best_x, best_fit_y, best_fit_params, best_fit_params_error, best_error = result
+            results.append({
+                "name": "asymmetric",
+                "x": best_x,
+                "y": best_fit_y,
+                "params": best_fit_params,
+                "pcov": best_fit_params_error,
+                "error": best_error,
+                "multi_flag": False,
+                "idx_interest": None})
     if not results:
         raise RuntimeError(f"No valid fit found for peak at index {ind_peak}")
 
@@ -419,7 +420,7 @@ def _fit_multi_gaussian(x_full, y_full, ind_peak, peaks, smoothing_params, pk_sn
     best_error = float("inf")
     best_idx_interest = None
 
-    while len(current_peaks) > 1:
+    while len(current_peaks) > 0:
         left, _ = calculate_boundaries(x_full, y_full, np.min(current_peaks), smoothing_params, pk_sns)
         _, right = calculate_boundaries(x_full, y_full, np.max(current_peaks), smoothing_params, pk_sns)
         x = x_full[left:right + 1]
@@ -448,6 +449,9 @@ def _fit_multi_gaussian(x_full, y_full, ind_peak, peaks, smoothing_params, pk_sn
                 best_idx_interest = index_of_interest
         except RuntimeError:
             pass
+
+        if len(current_peaks) <= 1:
+            break
 
         distances = np.abs(x[current_peaks] - x_full[ind_peak])
         if distances.size:
@@ -953,7 +957,7 @@ def run_peak_integrator(data, key, gi, pk_sns, smoothing_params, max_peaks_for_n
             data['Samples'][key]['Processed Data'][label] = [np.nan]
             continue
         try:
-            if gaussian_fit_mode in {"multi", "both"}:
+            if gaussian_fit_mode in {"multi", "both", "asymmetric_or_multi"}:
                 A, B, peak_neighborhood = find_peak_neighborhood_boundaries(
                     x=xdata, y_smooth=y_bcorr, peaks=peak_indices, valleys=valleys,
                     peak_idx=peak_idx, max_peaks=max_peaks_for_neighborhood,

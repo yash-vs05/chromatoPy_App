@@ -162,6 +162,19 @@ class IntegrationConfigurationDialog(QDialog):
         hplc_layout.addWidget(self.hplc_normalization_checkbox)
         layout.addWidget(self.hplc_section)
 
+        self.fid_section = QWidget()
+        fid_layout = QFormLayout(self.fid_section)
+        self.fid_peak_method_combo = QComboBox()
+        self.fid_peak_method_combo.addItem("Asymmetric", "asymmetric")
+        self.fid_peak_method_combo.addItem("Multi-Gaussian", "multi")
+        self.fid_peak_method_combo.addItem("Asymmetric or MultiGaussian", "asymmetric_or_multi")
+        fid_method_index = self.fid_peak_method_combo.findData(self._config.fid_peak_integration_method)
+        if fid_method_index >= 0:
+            self.fid_peak_method_combo.setCurrentIndex(fid_method_index)
+        self.fid_peak_method_combo.currentIndexChanged.connect(self._refresh_summary)
+        fid_layout.addRow("Peak Integration Method", self.fid_peak_method_combo)
+        layout.addWidget(self.fid_section)
+
         shared_grid = QGridLayout()
         self.peak_neighborhood_spin = QSpinBox()
         self.peak_neighborhood_spin.setRange(1, 50)
@@ -347,11 +360,14 @@ class IntegrationConfigurationDialog(QDialog):
     def _update_mode_sections(self):
         is_general = self._config.mode == "General"
         is_hplc = self._config.mode == "HPLC"
+        is_fid = self._config.mode == "FID"
         has_folder = bool(self.input_folder_edit.text().strip())
         self.general_section.setVisible(is_general)
         self.hplc_section.setVisible(is_hplc)
+        self.fid_section.setVisible(is_fid)
         self.general_section.setEnabled(has_folder)
         self.hplc_section.setEnabled(has_folder)
+        self.fid_section.setEnabled(has_folder)
         self.shared_settings_widget.setEnabled(has_folder)
         self.summary_box.setEnabled(has_folder)
         self._sync_general_fit_controls(self.deconvolution_checkbox.isChecked())
@@ -379,6 +395,11 @@ class IntegrationConfigurationDialog(QDialog):
                 summarize_integration_configuration(preview) + "\n\nConfigured channels and compounds:\n" + build_general_summary(preview)
             )
             return
+        if self._config.mode == "FID":
+            preview = copy.deepcopy(self._config)
+            preview.fid_peak_integration_method = self.fid_peak_method_combo.currentData()
+            self.summary_box.setPlainText(summarize_integration_configuration(preview))
+            return
         self.summary_box.setPlainText(summarize_integration_configuration(self._config))
 
     def _accept(self):
@@ -396,6 +417,9 @@ class IntegrationConfigurationDialog(QDialog):
         self._config.peak_boundary_derivative_sensitivity = self.peak_boundary_spin.value()
         self._config.peak_prominence = self.peak_prominence_spin.value()
         self._config.normalize_by_standard = self.hplc_normalization_checkbox.isChecked()
+
+        if self._config.mode == "FID":
+            self._config.fid_peak_integration_method = self.fid_peak_method_combo.currentData()
 
         if self._config.mode == "General":
             self._config.general_time_header = self.general_time_header_combo.currentText().strip()

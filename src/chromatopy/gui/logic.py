@@ -126,6 +126,7 @@ class IntegrationConfiguration:
     mode: str = "HPLC"
     input_folder: str = ""
     schema_type: str = "multi_channel"
+    fid_peak_integration_method: str = "asymmetric_or_multi"
     time_column: str = "RT (min)"
     signal_columns: list[str] = field(default_factory=list)
     general_time_header: str = ""
@@ -245,11 +246,20 @@ def summarize_integration_configuration(config: IntegrationConfiguration) -> str
     else:
         lines.extend(
             [
-                "FID uses the existing FID integration module.",
+                f"Peak integration method: {fid_peak_integration_method_label(config.fid_peak_integration_method)}",
                 "Select the folder containing the exported .txt chromatograms.",
             ]
         )
     return "\n".join(lines)
+
+
+def fid_peak_integration_method_label(method: str) -> str:
+    labels = {
+        "asymmetric": "Asymmetric",
+        "multi": "Multi-Gaussian",
+        "asymmetric_or_multi": "Asymmetric or MultiGaussian",
+    }
+    return labels.get(method, method)
 
 
 def build_general_summary(config: IntegrationConfiguration) -> str:
@@ -526,6 +536,7 @@ def run_peak_integration(config: IntegrationConfiguration, message_callback=None
     if config.mode == "FID":
         return fid_integration(
             folder_path=config.input_folder,
+            gaussian_fit_mode=config.fid_peak_integration_method,
             minimum_peak_amplitude=config.minimum_peak_amplitude,
             maximum_peak_amplitude=config.maximum_peak_amplitude,
             peak_boundary_derivative_sensitivity=config.peak_boundary_derivative_sensitivity,

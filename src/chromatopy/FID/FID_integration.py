@@ -55,7 +55,8 @@ def integration(
     Parameters:
     - categorized: Dictionary of pre-categorized data. If None, raw data is imported.
     - selection_method: 'click' or 'nearest' for peak selection.
-    - gaussian_fit_mode: 'single', 'multi', or 'both' for Gaussian fitting strategy.
+    - gaussian_fit_mode: 'asymmetric', 'multi', 'asymmetric_or_multi',
+      or legacy 'single'/'both' for Gaussian fitting strategy.
     - peak_neighborhood_n: Maximum number of peaks in a neighborhood.
     - smoothing_window: Savitzky-Golay filter window size.
     - smoothing_factor: Savitzky-Golay polynomial order.

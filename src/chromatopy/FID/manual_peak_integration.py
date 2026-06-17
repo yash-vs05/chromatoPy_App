@@ -273,7 +273,7 @@ class ManualPeakIntegrator:
     
         drawn = []
         try:
-            if self.gaussian_fit_mode in {"multi", "both"}:
+            if self.gaussian_fit_mode in {"multi", "both", "asymmetric_or_multi"}:
                 _, _, neigh = find_peak_neighborhood_boundaries(
                     self.x, self.y, self.peaks, self.valleys,
                     peak_idx, self.max_peaks_for_neighborhood, #self.pk_sns,
