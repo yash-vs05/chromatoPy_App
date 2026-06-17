@@ -46,6 +46,7 @@ def integration(
         folder_path=None,
         # Peak deconvolution 
         gaussian_fit_mode='single',  manual_peak_integration=False,
+        fid_window_limits=None,
         # Peak integration parameters
         peak_neighborhood_n=3, smoothing_window=5, 
         smoothing_factor=3, gaus_iterations=1000, minimum_peak_amplitude=None, maximum_peak_amplitude=None, 
@@ -110,7 +111,8 @@ def integration(
                 minimum_peak_amplitude, maximum_peak_amplitude, peak_boundary_derivative_sensitivity,
                 peak_prominence,
                 manual = manual_peak_integration,
-                peak_labels=peak_labels_data)
+                peak_labels=peak_labels_data,
+                fid_window_limits=fid_window_limits)
     else:
 
         result = import_data(folder_path=folder_path)
@@ -133,7 +135,8 @@ def integration(
             smoothing_factor, gaus_iterations,
             minimum_peak_amplitude, maximum_peak_amplitude, peak_boundary_derivative_sensitivity,
             peak_prominence, manual = manual_peak_integration,
-            peak_labels=peak_labels_data)
+            peak_labels=peak_labels_data,
+            fid_window_limits=fid_window_limits)
     
 def print_no_samples_to_process():
         tqdm.write("All samples in this directory have been processed.")
@@ -147,7 +150,7 @@ def FID_integration_backend(data, time_column, signal_column, folder_path,
                             peak_neighborhood_n=3, smoothing_window=35, smoothing_factor=3, 
                             gaus_iterations=4000, minimum_peak_amplitude=None, maximum_peak_amplitude=None, 
                             peak_boundary_derivative_sensitivity=0.01, peak_prominence=1, 
-                            manual=False, peak_labels=None):
+                            manual=False, peak_labels=None, fid_window_limits=None):
     
     # Get unprocessed samples only
     unprocessed_keys = [k for k in data["Samples"].keys() if 'Processed Data' not in data["Samples"][k].keys()]
@@ -199,7 +202,8 @@ def FID_integration_backend(data, time_column, signal_column, folder_path,
             y=signal,
             selection_method=sm,
             peak_positions=peak_positions,
-            owns_app=owns_app)
+            owns_app=owns_app,
+            axis_limits=fid_window_limits)
         
         if owns_app:
             # Script/terminal case: we own the event loop
@@ -755,7 +759,7 @@ def merge_existing_jsons(data, output_path):
 #                 app.quit()
     
 class FID_Peak_ID:
-    def __init__(self, x, y, selection_method, peak_positions=None, owns_app=False):
+    def __init__(self, x, y, selection_method, peak_positions=None, owns_app=False, axis_limits=None):
         self._owns_app = owns_app
         self.result = None
         self.finished = False
@@ -770,11 +774,13 @@ class FID_Peak_ID:
         self.peak_dict = {}
         self.peak_order = []
         self.peak_positions = list(peak_positions) if peak_positions is not None else []
+        self.axis_limits = axis_limits or (None, None, None, None)
 
         # Figure & plot
         self.fig, self.ax = plt.subplots(figsize=(10, 5))
         self.ax.plot(self.x, self.y)
         self.fig.canvas.mpl_connect("close_event", self._on_close)
+        self._apply_initial_axis_limits()
 
         # Axis limit text boxes
         self.textbox_minx_ax = self.fig.add_axes([0.15, 0.02, 0.1, 0.04])
@@ -788,10 +794,11 @@ class FID_Peak_ID:
 
         xmin, xmax = self.ax.get_xlim()
         ymin, ymax = self.ax.get_ylim()
-        self.textbox_minx.set_val(str(round(xmin, 1)))
-        self.textbox_maxx.set_val(str(round(xmax, 1)))
-        self.textbox_miny.set_val(str(round(ymin, 1)))
-        self.textbox_maxy.set_val(str(round(ymax, 1)))
+        configured_xmin, configured_xmax, configured_ymin, configured_ymax = self.axis_limits
+        self.textbox_minx.set_val("" if configured_xmin is None else str(round(xmin, 4)))
+        self.textbox_maxx.set_val("" if configured_xmax is None else str(round(xmax, 4)))
+        self.textbox_miny.set_val("" if configured_ymin is None else str(round(ymin, 4)))
+        self.textbox_maxy.set_val("" if configured_ymax is None else str(round(ymax, 4)))
 
         for box in [self.textbox_minx, self.textbox_maxx, self.textbox_miny, self.textbox_maxy]:
             box.on_submit(self.update_limits)
@@ -812,6 +819,27 @@ class FID_Peak_ID:
         self.fig.canvas.setFocus()
 
     # ---------- event handlers (class methods, not nested) ----------
+    def _axis_limit_value(self, value):
+        if value in ("", None):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _apply_initial_axis_limits(self):
+        xmin, xmax, ymin, ymax = [self._axis_limit_value(value) for value in self.axis_limits]
+        current_xmin, current_xmax = self.ax.get_xlim()
+        current_ymin, current_ymax = self.ax.get_ylim()
+        next_xmin = current_xmin if xmin is None else xmin
+        next_xmax = current_xmax if xmax is None else xmax
+        next_ymin = current_ymin if ymin is None else ymin
+        next_ymax = current_ymax if ymax is None else ymax
+        if next_xmin < next_xmax:
+            self.ax.set_xlim(next_xmin, next_xmax)
+        if next_ymin < next_ymax:
+            self.ax.set_ylim(next_ymin, next_ymax)
+
     def _on_close(self, event):
         if not self.finished:
             self.closed_without_finish = True

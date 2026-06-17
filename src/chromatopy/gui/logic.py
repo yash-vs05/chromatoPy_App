@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 import json
 import os
 from pathlib import Path
@@ -26,7 +26,9 @@ from ..utils.data_schema import (
 from .settings_memory import (
     delete_compound_history,
     list_compound_histories,
+    load_integration_configuration_memory,
     remember_compound_history,
+    save_integration_configuration_memory,
 )
 
 
@@ -126,7 +128,11 @@ class IntegrationConfiguration:
     mode: str = "HPLC"
     input_folder: str = ""
     schema_type: str = "multi_channel"
-    fid_peak_integration_method: str = "asymmetric_or_multi"
+    fid_peak_integration_method: str = "asymmetric"
+    fid_window_xmin: float | None = None
+    fid_window_xmax: float | None = None
+    fid_window_ymin: float | None = None
+    fid_window_ymax: float | None = None
     time_column: str = "RT (min)"
     signal_columns: list[str] = field(default_factory=list)
     general_time_header: str = ""
@@ -151,6 +157,58 @@ class IntegrationConfiguration:
     use_asymmetric_peak_integration: bool = False
     enable_peak_deconvolution: bool = True
     clip_negative_amplitudes: bool = True
+
+
+def _coerce_optional_float(value):
+    if value in ("", None):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def load_persisted_integration_configuration() -> IntegrationConfiguration:
+    config = IntegrationConfiguration()
+    saved = load_integration_configuration_memory()
+    valid_fields = {item.name: item for item in fields(IntegrationConfiguration)}
+    for name, value in saved.items():
+        if name not in valid_fields:
+            continue
+        current = getattr(config, name)
+        if name.startswith("fid_window_"):
+            setattr(config, name, _coerce_optional_float(value))
+        elif isinstance(current, bool):
+            setattr(config, name, bool(value))
+        elif isinstance(current, int) and not isinstance(current, bool):
+            try:
+                setattr(config, name, int(value))
+            except (TypeError, ValueError):
+                pass
+        elif isinstance(current, float):
+            try:
+                setattr(config, name, float(value))
+            except (TypeError, ValueError):
+                pass
+        elif isinstance(current, list):
+            if isinstance(value, list):
+                setattr(config, name, value)
+        elif isinstance(current, dict):
+            if isinstance(value, dict):
+                setattr(config, name, value)
+        elif isinstance(current, str):
+            if isinstance(value, str):
+                setattr(config, name, value)
+        elif current is None:
+            setattr(config, name, value)
+    if config.fid_peak_integration_method not in {"asymmetric", "multi", "asymmetric_or_multi"}:
+        config.fid_peak_integration_method = "asymmetric"
+    return config
+
+
+def remember_integration_configuration(config: IntegrationConfiguration) -> None:
+    payload = asdict(config)
+    save_integration_configuration_memory(payload)
 
 
 def refresh_integration_config(config: IntegrationConfiguration) -> IntegrationConfiguration:
@@ -244,9 +302,24 @@ def summarize_integration_configuration(config: IntegrationConfiguration) -> str
             ]
         )
     else:
+        axis_values = [
+            config.fid_window_xmin,
+            config.fid_window_xmax,
+            config.fid_window_ymin,
+            config.fid_window_ymax,
+        ]
+        def axis_value_text(value):
+            return "auto" if value is None else str(value)
+        axis_text = (
+            "Full chromatogram"
+            if all(value is None for value in axis_values)
+            else f"x=({axis_value_text(config.fid_window_xmin)}, {axis_value_text(config.fid_window_xmax)}), "
+                 f"y=({axis_value_text(config.fid_window_ymin)}, {axis_value_text(config.fid_window_ymax)})"
+        )
         lines.extend(
             [
                 f"Peak integration method: {fid_peak_integration_method_label(config.fid_peak_integration_method)}",
+                f"Peak selection window: {axis_text}",
                 "Select the folder containing the exported .txt chromatograms.",
             ]
         )
@@ -549,6 +622,12 @@ def run_peak_integration(config: IntegrationConfiguration, message_callback=None
         return fid_integration(
             folder_path=config.input_folder,
             gaussian_fit_mode=config.fid_peak_integration_method,
+            fid_window_limits=(
+                config.fid_window_xmin,
+                config.fid_window_xmax,
+                config.fid_window_ymin,
+                config.fid_window_ymax,
+            ),
             minimum_peak_amplitude=config.minimum_peak_amplitude,
             maximum_peak_amplitude=config.maximum_peak_amplitude,
             peak_boundary_derivative_sensitivity=config.peak_boundary_derivative_sensitivity,

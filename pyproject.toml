@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "chromatopy"
-version = "0.1.13"
+version = "0.1.14"
 description = "Peak integration software."
 authors = ["Dr. Gerard Otiniano <gerardotiniano@gmail.com>", "Dr. Elizabeth Thomas"]
 readme = "README.md"

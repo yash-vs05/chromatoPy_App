@@ -40,6 +40,8 @@ from .logic import (
     collect_general_header_options,
     detect_general_window_bounds,
     integration_file_status,
+    load_persisted_integration_configuration,
+    remember_integration_configuration,
     refresh_integration_config,
     remove_compound_history,
     run_data_conversion,
@@ -173,6 +175,23 @@ class IntegrationConfigurationDialog(QDialog):
             self.fid_peak_method_combo.setCurrentIndex(fid_method_index)
         self.fid_peak_method_combo.currentIndexChanged.connect(self._refresh_summary)
         fid_layout.addRow("Peak Integration Method", self.fid_peak_method_combo)
+        fid_window_grid = QGridLayout()
+        self.fid_window_xmin_edit = QLineEdit("" if self._config.fid_window_xmin is None else str(self._config.fid_window_xmin))
+        self.fid_window_xmax_edit = QLineEdit("" if self._config.fid_window_xmax is None else str(self._config.fid_window_xmax))
+        self.fid_window_ymin_edit = QLineEdit("" if self._config.fid_window_ymin is None else str(self._config.fid_window_ymin))
+        self.fid_window_ymax_edit = QLineEdit("" if self._config.fid_window_ymax is None else str(self._config.fid_window_ymax))
+        for edit in [self.fid_window_xmin_edit, self.fid_window_xmax_edit, self.fid_window_ymin_edit, self.fid_window_ymax_edit]:
+            edit.setPlaceholderText("Auto")
+            edit.textChanged.connect(self._refresh_summary)
+        fid_window_grid.addWidget(QLabel("X Min"), 0, 0)
+        fid_window_grid.addWidget(self.fid_window_xmin_edit, 0, 1)
+        fid_window_grid.addWidget(QLabel("X Max"), 0, 2)
+        fid_window_grid.addWidget(self.fid_window_xmax_edit, 0, 3)
+        fid_window_grid.addWidget(QLabel("Y Min"), 1, 0)
+        fid_window_grid.addWidget(self.fid_window_ymin_edit, 1, 1)
+        fid_window_grid.addWidget(QLabel("Y Max"), 1, 2)
+        fid_window_grid.addWidget(self.fid_window_ymax_edit, 1, 3)
+        fid_layout.addRow("Peak Selection Window", fid_window_grid)
         layout.addWidget(self.fid_section)
 
         shared_grid = QGridLayout()
@@ -377,6 +396,15 @@ class IntegrationConfigurationDialog(QDialog):
             self.asymmetric_checkbox.setChecked(False)
         self.asymmetric_checkbox.setEnabled((not deconvolution_enabled) and self._config.mode == "General")
 
+    def _optional_float_from_edit(self, edit: QLineEdit, label: str) -> float | None:
+        text = edit.text().strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError as exc:
+            raise ValueError(f"{label} must be blank or a number.") from exc
+
     def _refresh_summary(self):
         if self._config.mode == "General":
             compounds = [name.strip() for name in self.general_compounds_edit.text().split(",") if name.strip()]
@@ -398,6 +426,13 @@ class IntegrationConfigurationDialog(QDialog):
         if self._config.mode == "FID":
             preview = copy.deepcopy(self._config)
             preview.fid_peak_integration_method = self.fid_peak_method_combo.currentData()
+            try:
+                preview.fid_window_xmin = self._optional_float_from_edit(self.fid_window_xmin_edit, "FID X Min")
+                preview.fid_window_xmax = self._optional_float_from_edit(self.fid_window_xmax_edit, "FID X Max")
+                preview.fid_window_ymin = self._optional_float_from_edit(self.fid_window_ymin_edit, "FID Y Min")
+                preview.fid_window_ymax = self._optional_float_from_edit(self.fid_window_ymax_edit, "FID Y Max")
+            except ValueError:
+                pass
             self.summary_box.setPlainText(summarize_integration_configuration(preview))
             return
         self.summary_box.setPlainText(summarize_integration_configuration(self._config))
@@ -420,6 +455,28 @@ class IntegrationConfigurationDialog(QDialog):
 
         if self._config.mode == "FID":
             self._config.fid_peak_integration_method = self.fid_peak_method_combo.currentData()
+            try:
+                self._config.fid_window_xmin = self._optional_float_from_edit(self.fid_window_xmin_edit, "FID X Min")
+                self._config.fid_window_xmax = self._optional_float_from_edit(self.fid_window_xmax_edit, "FID X Max")
+                self._config.fid_window_ymin = self._optional_float_from_edit(self.fid_window_ymin_edit, "FID Y Min")
+                self._config.fid_window_ymax = self._optional_float_from_edit(self.fid_window_ymax_edit, "FID Y Max")
+            except ValueError as exc:
+                QMessageBox.warning(self, "Invalid FID window", str(exc))
+                return
+            if (
+                self._config.fid_window_xmin is not None
+                and self._config.fid_window_xmax is not None
+                and self._config.fid_window_xmin >= self._config.fid_window_xmax
+            ):
+                QMessageBox.warning(self, "Invalid FID window", "FID X Min must be less than FID X Max.")
+                return
+            if (
+                self._config.fid_window_ymin is not None
+                and self._config.fid_window_ymax is not None
+                and self._config.fid_window_ymin >= self._config.fid_window_ymax
+            ):
+                QMessageBox.warning(self, "Invalid FID window", "FID Y Min must be less than FID Y Max.")
+                return
 
         if self._config.mode == "General":
             self._config.general_time_header = self.general_time_header_combo.currentText().strip()
@@ -528,11 +585,12 @@ class PeakIntegrationPage(ModulePage):
             on_back=on_back,
             parent=parent,
         )
-        self.current_config = IntegrationConfiguration()
+        self.current_config = load_persisted_integration_configuration()
 
         controls = QHBoxLayout()
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["HPLC", "FID", "General"])
+        self.mode_combo.setCurrentText(self.current_config.mode)
         self.mode_combo.currentTextChanged.connect(self._mode_changed)
         controls.addWidget(QLabel("Processing Mode"))
         controls.addWidget(self.mode_combo)
@@ -606,6 +664,7 @@ class PeakIntegrationPage(ModulePage):
         )
         if exec_dialog(dialog) == QDialog.Accepted:
             self.current_config = dialog.configuration()
+            remember_integration_configuration(self.current_config)
             self.mode_combo.setCurrentText(self.current_config.mode)
             self._refresh_summary()
             self.log.appendPlainText(f"{self.current_config.mode} configuration updated.")
