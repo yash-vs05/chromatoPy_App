@@ -76,7 +76,8 @@ def run_peak_integrator_manual(data, key, gi, pk_sns, smoothing_params, max_peak
         gi,
         gaussian_fit_mode,
         max_peaks_for_neighborhood,
-        sample_name=key)
+        sample_name=key,
+        output_figure_path=str(fp) + f"/{key}.png")
     # app = QApplication.instance() or QApplication(sys.argv)
     # app.exec_()
     app = QApplication.instance()
@@ -100,8 +101,6 @@ def run_peak_integrator_manual(data, key, gi, pk_sns, smoothing_params, max_peak
     
     # Save output
     data['Samples'][key]['Processed Data'] = peak_selector.processed_data
-    peak_selector.fig.savefig(str(fp) + f"/{key}.png", dpi=300)
-    plt.close(peak_selector.fig)
     return data
 
 
@@ -118,6 +117,7 @@ class ManualPeakIntegrator:
                  gaussian_fit_mode,
                  max_peaks_for_neighborhood,
                  sample_name="",
+                 output_figure_path=None,
                  owns_app=False):
         self._owns_app = owns_app
         self.x, self.y = pd.Series(x), pd.Series(y)
@@ -131,6 +131,7 @@ class ManualPeakIntegrator:
         self.gaussian_fit_mode = gaussian_fit_mode
         self.max_peaks_for_neighborhood = max_peaks_for_neighborhood
         self.sample_name = sample_name
+        self.output_figure_path = output_figure_path
 
         self.index = 0
         self.processed_data = {}
@@ -410,6 +411,8 @@ class ManualPeakIntegrator:
         # disconnect callbacks and close GUI
         self.text.set_text("")
         self.fig.canvas.draw()
+        if self.output_figure_path:
+            self.fig.savefig(self.output_figure_path, dpi=300)
         if self.cid_click is not None:
             self.fig.canvas.mpl_disconnect(self.cid_click)
             self.cid_click = None
@@ -417,6 +420,7 @@ class ManualPeakIntegrator:
         self.finished=True
         if callable(self.on_done):
             self.on_done()
+        plt.close(self.fig)
         # QApplication.quit()
         if getattr(self, "_owns_app", False):
             app = QApplication.instance()
