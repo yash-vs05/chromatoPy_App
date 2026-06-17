@@ -587,6 +587,12 @@ class PeakIntegrationPage(ModulePage):
                 "in 'results_peak_area.csv'."
             )
             return
+        if str(status.get("results_file_path", "")).endswith("Sample Data"):
+            self.log.appendPlainText(
+                f"Identified {total_files} files. {processed_files} files are already processed. "
+                "To re-integrate an FID sample, delete that sample's JSON file from 'chromatoPy output/Sample Data'."
+            )
+            return
         self.log.appendPlainText(
             f"Identified {total_files} files. {processed_files} files are already processed."
         )

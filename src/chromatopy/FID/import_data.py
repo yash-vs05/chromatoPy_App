@@ -211,6 +211,7 @@
 
 #!/chromatoPy/src/chromatopy/FID/import_data.py
 import os
+from pathlib import Path
 from tqdm import tqdm
 import re
 import pandas as pd
@@ -382,36 +383,59 @@ def create_output_folders(folder_path):
 
 def check_existing_jsons(data_dict, output_path):
     """
-    Merge any new samples in data_dict into an existing JSON on disk.
+    Copy existing processed sample results onto freshly imported raw samples.
     Returns: (merged_dict, unprocessed_keys)
-      - merged_dict: either the existing JSON plus new samples, or your original data_dict
-      - unprocessed_keys: list of sample-names that came in fresh
+      - merged_dict: freshly imported data, with existing Processed Data attached
+      - unprocessed_keys: list of sample-names that still need processing
     """
     existing = load_json(output_path)
-    # no file on disk → nothing processed yet
-    if existing is None:
-        unprocessed = list(data_dict["Samples"].keys())
-        return data_dict, unprocessed
+    existing_samples = existing.get("Samples", {}) if existing else {}
 
-    # else: there was an existing JSON
-    before = set(existing["Samples"].keys())
-    # add any brand-new samples
+    unprocessed = []
     for name, sample in data_dict["Samples"].items():
-        if name not in existing["Samples"]:
-            existing["Samples"][name] = sample
+        existing_sample = existing_samples.get(name, {})
+        if isinstance(existing_sample, dict) and "Processed Data" in existing_sample:
+            sample["Processed Data"] = existing_sample["Processed Data"]
+        else:
+            unprocessed.append(name)
 
-    # figure out which ones we just added
-    after = set(existing["Samples"].keys())
-    unprocessed = list(after - before)
+    return data_dict, unprocessed
 
-    return existing, unprocessed
+
+def _sample_data_dir(output_path):
+    return os.path.join(output_path, "Sample Data")
 
 def load_json(output_path, list_samples=False, list_processed=False):
     """
-    Try to load FID_output.json from output_path.
+    Try to load per-sample JSON files from output_path/Sample Data.
+    Falls back to legacy FID_output.json when present.
     If it doesn’t exist, return None.
     Otherwise return the dict, rebuilding any Raw Data dicts into DataFrames.
     """
+    data = {"Samples": {}, "Integration Metadata": {}}
+    sample_dir = _sample_data_dir(output_path)
+    if os.path.isdir(sample_dir):
+        for sample_file in sorted(Path(sample_dir).glob("*.json")):
+            with open(sample_file, "r") as f:
+                sample = json.load(f)
+            sample_name = sample.get("Sample Name", sample_file.stem)
+            integration_metadata = sample.pop("Integration Metadata", None)
+            sample.pop("Sample Name", None)
+            data["Samples"][sample_name] = sample
+            if integration_metadata and not data["Integration Metadata"]:
+                data["Integration Metadata"] = integration_metadata
+        if data["Samples"]:
+            if list_samples:
+                for key in data['Samples'].keys():
+                    print(key)
+            if list_processed:
+                key = []
+                for x in data['Samples'].keys():
+                    if 'Processed Data' in data['Samples'][x].keys():
+                        key.append(x)
+                print(key)
+            return data
+
     js_file = os.path.join(output_path, "FID_output.json")
     if not os.path.exists(js_file):
         return None

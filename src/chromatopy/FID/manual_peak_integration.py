@@ -73,7 +73,9 @@ def run_peak_integrator_manual(data, key, gi, pk_sns, smoothing_params, max_peak
         smoothing_params,
         pk_sns,
         gi,
-        gaussian_fit_mode, max_peaks_for_neighborhood)
+        gaussian_fit_mode,
+        max_peaks_for_neighborhood,
+        sample_name=key)
     # app = QApplication.instance() or QApplication(sys.argv)
     # app.exec_()
     app = QApplication.instance()
@@ -112,6 +114,7 @@ class ManualPeakIntegrator:
                  gi,
                  gaussian_fit_mode,
                  max_peaks_for_neighborhood,
+                 sample_name="",
                  owns_app=False):
         self._owns_app = owns_app
         self.x, self.y = pd.Series(x), pd.Series(y)
@@ -124,6 +127,7 @@ class ManualPeakIntegrator:
         self.gi = gi
         self.gaussian_fit_mode = gaussian_fit_mode
         self.max_peaks_for_neighborhood = max_peaks_for_neighborhood
+        self.sample_name = sample_name
 
         self.index = 0
         self.processed_data = {}
@@ -135,6 +139,8 @@ class ManualPeakIntegrator:
         self.fig, self.ax = plt.subplots()
         self.ax.axhline(0, c='k')
         self.ax.plot(self.x, self.y, c='k', alpha = 0.6)
+        if self.sample_name:
+            self.ax.set_title(str(self.sample_name))
         self.text = self.ax.text(
             0.5, 0.95, f"Click peak for: {self.labels[self.index]}",
             transform=self.ax.transAxes, ha='center')
@@ -240,6 +246,42 @@ class ManualPeakIntegrator:
     #     # save for undo, then advance
     #     self.artists_stack.append(drawn)
     #     self._advance_prompt()
+    def _fit_color(self, model_params):
+        model_name = ""
+        if isinstance(model_params, dict):
+            model_name = str(model_params.get("name", "")).lower()
+        return "blue" if model_name == "asymmetric" else "red"
+
+    def _add_peak_label(self, label, x_fit, y_fit):
+        if len(x_fit) == 0 or len(y_fit) == 0:
+            return None
+
+        fit_peak_idx = int(np.argmax(y_fit))
+        x_peak = float(x_fit[fit_peak_idx])
+        y_peak = float(y_fit[fit_peak_idx])
+        y_values = self.y.to_numpy(dtype=float)
+        y_min, y_max = self.ax.get_ylim()
+        y_range = max(y_max - y_min, np.nanmax(y_values) - np.nanmin(y_values), 1e-9)
+
+        local_mask = np.abs(self.x.to_numpy(dtype=float) - x_peak) <= max(self.click_tolerance / 2, 0.03)
+        if np.any(local_mask):
+            y_peak = max(y_peak, float(np.nanmax(y_values[local_mask])))
+
+        y_text = y_peak + 0.05 * y_range
+        if y_text > y_max - 0.04 * y_range:
+            self.ax.set_ylim(y_min, y_text + 0.08 * y_range)
+
+        return self.ax.text(
+            x_peak,
+            y_text,
+            str(label),
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            color="black",
+            bbox=dict(facecolor="white", edgecolor="none", alpha=0.65, pad=1.5),
+            zorder=3)
+
     def onclick(self, event):
         if event.inaxes != self.ax:
             return
@@ -290,8 +332,11 @@ class ManualPeakIntegrator:
                 self.smoothing_params, self.pk_sns,
                 gi=self.gi,
                 mode=self.gaussian_fit_mode)
-            poly = self.ax.fill_between(x_fit, 0, y_fit, color='red', alpha=0.4)
+            poly = self.ax.fill_between(x_fit, 0, y_fit, color=self._fit_color(model_params), alpha=0.4)
             drawn.append(poly)
+            label_artist = self._add_peak_label(current_label, x_fit, y_fit)
+            if label_artist is not None:
+                drawn.append(label_artist)
     
             self.processed_data[current_label] = {
                 'Peak Area - best fit': float(area_smooth),

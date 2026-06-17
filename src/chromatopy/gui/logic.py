@@ -490,11 +490,23 @@ def integration_file_status(config: IntegrationConfiguration) -> dict:
             for path in input_path.iterdir()
             if path.is_file() and path.suffix.lower() == ".txt"
         }
-        results_file_path = input_path / "chromatoPy output" / "FID_output.json"
+        output_path = input_path / "chromatoPy output"
+        sample_data_path = output_path / "Sample Data"
         processed_names = set()
-        if results_file_path.exists():
+        if sample_data_path.exists():
+            for sample_file in sample_data_path.glob("*.json"):
+                try:
+                    with sample_file.open("r", encoding="utf-8") as handle:
+                        sample_data = json.load(handle)
+                except Exception:
+                    sample_data = {}
+                sample_name = sample_data.get("Sample Name", sample_file.stem)
+                if isinstance(sample_data, dict) and "Processed Data" in sample_data:
+                    processed_names.add(str(sample_name))
+        legacy_results_file_path = output_path / "FID_output.json"
+        if legacy_results_file_path.exists():
             try:
-                with results_file_path.open("r", encoding="utf-8") as handle:
+                with legacy_results_file_path.open("r", encoding="utf-8") as handle:
                     existing = json.load(handle)
             except Exception:
                 existing = {}
@@ -504,7 +516,7 @@ def integration_file_status(config: IntegrationConfiguration) -> dict:
         return {
             "total_files": len(sample_names),
             "processed_files": len(sample_names & processed_names),
-            "results_file_path": str(results_file_path),
+            "results_file_path": str(sample_data_path),
         }
 
     csv_files = list_csv_files(str(input_path))

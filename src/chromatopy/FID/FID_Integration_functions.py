@@ -864,6 +864,44 @@ def skewed_gaussian(x, amp, cen, sigma, alpha):
 def gaussian_decay( x, amp, cen, wid, dec):
     return amp * np.exp(-((x - cen) ** 2) / (2 * wid**2)) * np.exp(-dec * abs(x - cen))
 
+
+def fit_color(model_params):
+    model_name = ""
+    if isinstance(model_params, dict):
+        model_name = str(model_params.get("name", "")).lower()
+    return "blue" if model_name == "asymmetric" else "red"
+
+
+def add_peak_label(ax, label, x_fit, y_fit, x_signal, y_signal):
+    if len(x_fit) == 0 or len(y_fit) == 0:
+        return None
+    fit_peak_idx = int(np.argmax(y_fit))
+    x_peak = float(x_fit[fit_peak_idx])
+    y_peak = float(y_fit[fit_peak_idx])
+    y_values = np.asarray(y_signal, dtype=float)
+    y_min, y_max = ax.get_ylim()
+    y_range = max(y_max - y_min, np.nanmax(y_values) - np.nanmin(y_values), 1e-9)
+
+    x_values = np.asarray(x_signal, dtype=float)
+    local_mask = np.abs(x_values - x_peak) <= 0.08
+    if np.any(local_mask):
+        y_peak = max(y_peak, float(np.nanmax(y_values[local_mask])))
+
+    y_text = y_peak + 0.05 * y_range
+    if y_text > y_max - 0.04 * y_range:
+        ax.set_ylim(y_min, y_text + 0.08 * y_range)
+
+    return ax.text(
+        x_peak,
+        y_text,
+        str(label),
+        ha="center",
+        va="bottom",
+        fontsize=8,
+        color="black",
+        bbox=dict(facecolor="white", edgecolor="none", alpha=0.65, pad=1.5),
+        zorder=3)
+
 def forward_derivative(x, y):
     fd = np.diff(y) / np.diff(x)
     x_n = x#[:-1]
@@ -985,6 +1023,7 @@ def run_peak_integrator(data, key, gi, pk_sns, smoothing_params, max_peaks_for_n
 
     fig = plt.figure()
     plt.plot(xdata, y_bcorr, c= 'k', linewidth=1, linestyle='-', zorder=2)
+    plt.title(str(key))
     valleys = find_valleys(y_bcorr, peak_indices)
     peak_labels = list(data['Integration Metadata']['peak dictionary'])
     for label, peak_idx in zip(peak_labels, matched_indices):
@@ -1005,13 +1044,9 @@ def run_peak_integrator(data, key, gi, pk_sns, smoothing_params, max_peaks_for_n
             x_fit, y_fit_smooth, area_smooth, area_ensemble, model_parameters = fit_gaussians(
                 xdata, y_bcorr, peak_idx, peak_neighborhood,
                 smoothing_params, pk_sns, gi=gi, mode=gaussian_fit_mode)
-            plt.fill_between(x_fit, 0, y_fit_smooth, color="red", alpha=0.5, zorder=1)
+            plt.fill_between(x_fit, 0, y_fit_smooth, color=fit_color(model_parameters), alpha=0.5, zorder=1)
             x_peak_label = x_fit[np.argmax(y_fit_smooth)]
-            y_peak_label = max(y_fit_smooth)
-            plt.text(x_peak_label, y_peak_label * 1.05, label,
-            ha='center', va='bottom',
-            fontsize=8, color='black', rotation=0,
-            zorder=2, bbox=dict(facecolor='white', edgecolor='none', alpha=0))
+            add_peak_label(plt.gca(), label, x_fit, y_fit_smooth, xdata, y_bcorr)
             data['Samples'][key]['Processed Data'][label] = {
                  'Peak Area - best fit': area_smooth,
                  'Peak Area - median': np.median(area_ensemble),
