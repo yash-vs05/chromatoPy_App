@@ -18,6 +18,7 @@ import json
 # ─── Qt GUI Toolkit ────────────────────────────────────────────────────────────
 from ..qt_compat import (
     QApplication,
+    QEventLoop,
     QDialog,
     QLabel,
     QLineEdit,
@@ -87,8 +88,10 @@ def run_peak_integrator_manual(data, key, gi, pk_sns, smoothing_params, max_peak
     if owns_app:
         run_application(app)
     else:
-        while not getattr(peak_selector, "finished", False) and plt.fignum_exists(peak_selector.fig.number):
-            plt.pause(0.1)
+        loop = QEventLoop()
+        peak_selector.on_done = loop.quit
+        peak_selector.fig.canvas.mpl_connect("close_event", lambda event: loop.quit())
+        loop.exec()
     
     
     if peak_selector.force_exit:
@@ -134,6 +137,7 @@ class ManualPeakIntegrator:
         self.artists_stack = []
         self.click_tolerance = 10/60  # 10 seconds in minutes
         self.finished = False
+        self.on_done = None
 
         # figure + data plot
         self.fig, self.ax = plt.subplots()
@@ -282,6 +286,12 @@ class ManualPeakIntegrator:
             bbox=dict(facecolor="white", edgecolor="none", alpha=0.65, pad=1.5),
             zorder=3)
 
+    def _record_no_peak(self, label, click_time):
+        line = self.ax.axvline(click_time, color='grey', linestyle='--')
+        self.artists_stack.append([line])
+        self.processed_data[label] = {'Values': [np.nan]}
+        self._advance_prompt()
+
     def onclick(self, event):
         if event.inaxes != self.ax:
             return
@@ -298,17 +308,23 @@ class ManualPeakIntegrator:
         current_label = self.labels[self.index]
     
         click_time = event.xdata
+        if click_time is None:
+            return
+
+        if self.peaks.size == 0:
+            self._record_no_peak(current_label, click_time)
+            return
+
         peak_times = self.x.to_numpy()[self.peaks]
         dists = np.abs(peak_times - click_time)
+        if dists.size == 0:
+            self._record_no_peak(current_label, click_time)
+            return
         best = dists.argmin()
     
         # if the nearest real peak is > tolerance, treat as “no peak”
         if dists[best] > self.click_tolerance:
-            # no valid peak → grey dashed line & record NaN
-            line = self.ax.axvline(click_time, color='grey', linestyle='--')
-            self.artists_stack.append([line])
-            self.processed_data[current_label] = {'Values': [np.nan]}
-            self._advance_prompt()
+            self._record_no_peak(current_label, click_time)
             return
     
         peak_idx = int(self.peaks[best])
@@ -399,6 +415,8 @@ class ManualPeakIntegrator:
             self.cid_click = None
         self.fig.canvas.mpl_disconnect(self.cid_key)
         self.finished=True
+        if callable(self.on_done):
+            self.on_done()
         # QApplication.quit()
         if getattr(self, "_owns_app", False):
             app = QApplication.instance()
