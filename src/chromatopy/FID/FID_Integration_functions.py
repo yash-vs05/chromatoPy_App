@@ -141,30 +141,65 @@ def smoother(y, window_length, polyorder):
 def find_peak_neighborhood_boundaries(x, y_smooth, peaks, valleys, peak_idx, max_peaks, peak_properties, gi, smoothing_params, pk_sns):
     overlapping_peaks = []
     extended_boundaries = {}
-    # Analyze each of the closest peaks
-    for peak in peaks: #closest_peaks:
-        peak_pos = np.where(peak == peaks)
-        l_lim = peak_properties["left_bases"][peak_pos][0]
-        r_lim = peak_properties["right_bases"][peak_pos][0]
-        heights, means, stddevs = estimate_initial_gaussian_params(x[l_lim : r_lim + 1], y_smooth[l_lim : r_lim + 1], peak)
-        height, mean, stddev = heights[0], means[0], stddevs[0]
+
+    x_arr = np.asarray(x, dtype=float)
+    y_arr = np.asarray(y_smooth, dtype=float)
+    peaks_arr = np.asarray(peaks, dtype=int)
+    if peaks_arr.size == 0:
+        return None, None, []
+
+    max_peaks = max(int(max_peaks or 1), 1)
+    if peak_idx not in peaks_arr:
+        peaks_arr = np.append(peaks_arr, int(peak_idx))
+
+    nearest_order = np.argsort(np.abs(peaks_arr - int(peak_idx)))
+    candidate_peaks = peaks_arr[nearest_order[:max_peaks]]
+    if peak_idx not in candidate_peaks:
+        candidate_peaks = np.append(candidate_peaks, int(peak_idx))
+
+    left_bases = np.asarray(peak_properties.get("left_bases", []), dtype=int)
+    right_bases = np.asarray(peak_properties.get("right_bases", []), dtype=int)
+
+    # Analyze only the closest candidate peaks, and fit each over its local base window.
+    for peak in candidate_peaks:
+        peak_positions = np.where(peaks_arr == peak)[0]
+        if peak_positions.size and peak_positions[0] < left_bases.size and peak_positions[0] < right_bases.size:
+            l_lim = int(left_bases[peak_positions[0]])
+            r_lim = int(right_bases[peak_positions[0]])
+        else:
+            l_lim, r_lim = calculate_boundaries(x_arr, y_arr, int(peak), smoothing_params, pk_sns)
+        l_lim = max(int(l_lim), 0)
+        r_lim = min(int(r_lim), len(x_arr) - 1)
+        if r_lim <= l_lim:
+            continue
+
+        x_seg = pd.Series(x_arr[l_lim : r_lim + 1]).reset_index(drop=True)
+        y_seg = pd.Series(y_arr[l_lim : r_lim + 1]).reset_index(drop=True)
+        local_peak = int(np.clip(int(peak) - l_lim, 0, len(x_seg) - 1))
+        heights, means, stddevs = estimate_initial_gaussian_params(x_seg, y_seg, local_peak)
+        height, mean, stddev = heights[0], means[0], max(stddevs[0], 1e-6)
 
         # Fit Gaussian and get best fit parameters
         try:
-            popt, _ = curve_fit(individual_gaussian, x, y_smooth, p0=[height, mean, stddev], maxfev=gi)
+            popt, _ = curve_fit(individual_gaussian, x_seg, y_seg, p0=[height, mean, stddev], maxfev=gi)
         except RuntimeError:
-            popt, _ = curve_fit(individual_gaussian, x, y_smooth, p0=[height, mean, stddev], maxfev=gi*100)
+            try:
+                popt, _ = curve_fit(individual_gaussian, x_seg, y_seg, p0=[height, mean, stddev], maxfev=gi * 10)
+            except RuntimeError:
+                popt = [height, mean, stddev]
         # Extend Gaussian fit limits
         x_min, x_max = calculate_gaus_extension_limits(popt[1], popt[2], factor=3)
-        extended_x, extended_y = extrapolate_gaussian(x, popt[0], popt[1], popt[2], None, x_min - 2, x_max + 2)
+        extended_x, extended_y = extrapolate_gaussian(x_arr, popt[0], popt[1], popt[2], None, x_min - 2, x_max + 2)
         # Find the boundaries based on the derivative test
-        peak_x_value = x[peak]
+        peak_x_value = x_arr[peak]
         n_peak_idx = np.argmin(np.abs(extended_x - peak_x_value))
         left_idx, right_idx = calculate_boundaries(extended_x, extended_y, n_peak_idx, smoothing_params, pk_sns)
         extended_boundaries[peak] = (extended_x[left_idx], extended_x[right_idx])
 
     # Determine the peak of interest boundaries
     poi_bounds = extended_boundaries.get(peak_idx, (None, None))
+    if poi_bounds == (None, None):
+        return None, None, []
 
     # Check for overlaps and determine the neighborhood
     for peak, bounds in extended_boundaries.items():
@@ -963,6 +998,8 @@ def run_peak_integrator(data, key, gi, pk_sns, smoothing_params, max_peaks_for_n
                     peak_idx=peak_idx, max_peaks=max_peaks_for_neighborhood,
                     peak_properties=peak_properties, gi=gi,
                     smoothing_params=smoothing_params, pk_sns=pk_sns)
+                if not peak_neighborhood:
+                    peak_neighborhood = [peak_idx]
             else:
                 peak_neighborhood = [peak_idx]
             x_fit, y_fit_smooth, area_smooth, area_ensemble, model_parameters = fit_gaussians(

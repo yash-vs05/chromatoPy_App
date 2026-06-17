@@ -281,6 +281,8 @@ class ManualPeakIntegrator:
                     gi=self.gi,
                     smoothing_params=self.smoothing_params,
                     pk_sns=self.pk_sns)
+                if not neigh:
+                    neigh = [peak_idx]
             else:
                 neigh = [peak_idx]
             x_fit, y_fit, area_smooth, area_ensemble, model_params = fit_gaussians(
@@ -317,10 +319,6 @@ class ManualPeakIntegrator:
                 tqdm.write(done_msg)
             except Exception:
                 print(done_msg)
-            try:
-                self.fig.canvas.mpl_disconnect(self.cid_click)
-            except Exception:
-                pass
     
     def _advance_prompt(self):
         """increment index, update the onscreen prompt, redraw."""
@@ -343,13 +341,17 @@ class ManualPeakIntegrator:
                 try: art.remove()
                 except: pass
             self.text.set_text(f"Click peak for: {self.labels[self.index]}")
+            if self.cid_click is None:
+                self.cid_click = self.fig.canvas.mpl_connect("button_press_event", self.onclick)
             self.fig.canvas.draw()
 
     def finish(self, event=None):
         # disconnect callbacks and close GUI
         self.text.set_text("")
-        self.fig.canvas.draw
-        self.fig.canvas.mpl_disconnect(self.cid_click)
+        self.fig.canvas.draw()
+        if self.cid_click is not None:
+            self.fig.canvas.mpl_disconnect(self.cid_click)
+            self.cid_click = None
         self.fig.canvas.mpl_disconnect(self.cid_key)
         self.finished=True
         # QApplication.quit()
