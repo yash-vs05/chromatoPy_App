@@ -181,6 +181,8 @@ __pycache__/
 .venv/
 
 update_version_number.txt
+build_offline_app.py
+offline_build/
 
 # Cursor  
 #  Cursor is an AI-powered code editor.`.cursorignore` specifies files/directories to 

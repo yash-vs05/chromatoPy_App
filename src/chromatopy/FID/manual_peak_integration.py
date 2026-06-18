@@ -87,8 +87,12 @@ def run_peak_integrator_manual(data, key, gi, pk_sns, smoothing_params, max_peak
         owns_app = True
     
     if owns_app:
+        peak_selector.fig.show()
         run_application(app)
     else:
+        peak_selector.fig.show()
+        peak_selector.fig.canvas.draw_idle()
+        QApplication.processEvents()
         loop = QEventLoop()
         peak_selector.on_done = loop.quit
         peak_selector.fig.canvas.mpl_connect("close_event", lambda event: loop.quit())

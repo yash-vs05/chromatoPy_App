@@ -93,7 +93,7 @@ def main() -> int:
         "--collect-submodules=chromatopy.gui",
         "--collect-submodules=chromatopy.utils",
         "--copy-metadata=chromatopy",
-        # "--collect-all=PySide6",
+        #"--collect-all=PySide6",
         # "--collect-all=matplotlib",
         "--collect-all=rainbow",
         "--hidden-import=chromatopy.hplc_integration",

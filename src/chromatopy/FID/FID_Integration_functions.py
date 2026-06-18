@@ -447,7 +447,7 @@ def fit_gaussians(x_full, y_full, ind_peak, peaks, smoothing_params, pk_sns, gi,
 
 
 def _fit_multi_gaussian(x_full, y_full, ind_peak, peaks, smoothing_params, pk_sns, gi):
-    current_peaks = np.sort(np.append(peaks, ind_peak))
+    current_peaks = np.unique(np.append(np.asarray(peaks, dtype=int), int(ind_peak)))
     best_fit_y = None
     best_fit_params = None
     best_fit_params_error = None
@@ -491,6 +491,7 @@ def _fit_multi_gaussian(x_full, y_full, ind_peak, peaks, smoothing_params, pk_sn
         distances = np.abs(x[current_peaks] - x_full[ind_peak])
         if distances.size:
             current_peaks = np.delete(current_peaks, np.argmax(distances))
+            current_peaks = np.unique(current_peaks)
 
     if best_fit_params is not None:
         return best_x, best_fit_y, best_fit_params, best_fit_params_error, best_error, best_idx_interest
