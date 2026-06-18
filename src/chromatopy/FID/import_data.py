@@ -394,12 +394,17 @@ def check_existing_jsons(data_dict, output_path):
     unprocessed = []
     for name, sample in data_dict["Samples"].items():
         existing_sample = existing_samples.get(name, {})
-        if isinstance(existing_sample, dict) and "Processed Data" in existing_sample:
+        if is_processed_sample(existing_sample):
             sample["Processed Data"] = existing_sample["Processed Data"]
         else:
             unprocessed.append(name)
 
     return data_dict, unprocessed
+
+
+def is_processed_sample(sample):
+    processed = sample.get("Processed Data") if isinstance(sample, dict) else None
+    return isinstance(processed, dict) and bool(processed)
 
 
 def _sample_data_dir(output_path):
@@ -408,9 +413,7 @@ def _sample_data_dir(output_path):
 def load_json(output_path, list_samples=False, list_processed=False):
     """
     Try to load per-sample JSON files from output_path/Sample Data.
-    Falls back to legacy FID_output.json when present.
     If it doesn’t exist, return None.
-    Otherwise return the dict, rebuilding any Raw Data dicts into DataFrames.
     """
     data = {"Samples": {}, "Integration Metadata": {}}
     sample_dir = _sample_data_dir(output_path)
@@ -421,6 +424,8 @@ def load_json(output_path, list_samples=False, list_processed=False):
             sample_name = sample.get("Sample Name", sample_file.stem)
             integration_metadata = sample.pop("Integration Metadata", None)
             sample.pop("Sample Name", None)
+            if not is_processed_sample(sample):
+                continue
             data["Samples"][sample_name] = sample
             if integration_metadata and not data["Integration Metadata"]:
                 data["Integration Metadata"] = integration_metadata
@@ -435,26 +440,4 @@ def load_json(output_path, list_samples=False, list_processed=False):
                         key.append(x)
                 print(key)
             return data
-
-    js_file = os.path.join(output_path, "FID_output.json")
-    if not os.path.exists(js_file):
-        return None
-
-    with open(js_file, "r") as f:
-        data = json.load(f)
-
-    # rebuild Raw Data dicts into DataFrames
-    for sample in data.get("Samples", {}).values():
-        raw = sample.get("Raw Data")
-        if isinstance(raw, dict):
-            sample["Raw Data"] = pd.DataFrame(raw)
-    if list_samples:
-        for key in data['Samples'].keys():
-            print(key)
-    if list_processed:
-        key = []
-        for x in data['Samples'].keys():
-            if 'Processed Data' in data['Samples'][x].keys():
-                key.append(x)
-        print(key)
-    return data
+    return None

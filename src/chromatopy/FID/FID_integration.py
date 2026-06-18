@@ -153,7 +153,7 @@ def FID_integration_backend(data, time_column, signal_column, folder_path,
                             manual=False, peak_labels=None, fid_window_limits=None):
     
     # Get unprocessed samples only
-    unprocessed_keys = [k for k in data["Samples"].keys() if 'Processed Data' not in data["Samples"][k].keys()]
+    unprocessed_keys = [k for k in data["Samples"].keys() if not is_processed_sample(data["Samples"][k])]
     
     # Identify peak locations
     if manual and peak_labels is not None:
@@ -344,6 +344,11 @@ def _strip_raw_data(sample):
     return {key: value for key, value in sample.items() if key != "Raw Data"}
 
 
+def is_processed_sample(sample):
+    processed = sample.get("Processed Data") if isinstance(sample, dict) else None
+    return isinstance(processed, dict) and bool(processed)
+
+
 def save_json(container, output_path):
     # “container” is the dict you get back from import_data()
     data_dict = container["data_dict"]
@@ -354,7 +359,10 @@ def save_json(container, output_path):
     sample_dir = _sample_data_dir(output_path)
     os.makedirs(sample_dir, exist_ok=True)
     for sample_name, sample_data in cleanable.get("Samples", {}).items():
-        if not isinstance(sample_data, dict) or "Processed Data" not in sample_data:
+        if not is_processed_sample(sample_data):
+            stale_path = _sample_json_path(output_path, sample_name)
+            if os.path.exists(stale_path):
+                os.remove(stale_path)
             continue
         sample_payload = _strip_raw_data(sample_data)
         sample_payload.setdefault("Sample Name", sample_name)
@@ -365,9 +373,7 @@ def save_json(container, output_path):
 def load_json(output_path, list_samples=False, list_processed=False):
     """
     Try to load per-sample JSON files from output_path/Sample Data.
-    Falls back to legacy FID_output.json when present.
     If it doesn’t exist, return None.
-    Otherwise return the dict, rebuilding any Raw Data dicts into DataFrames.
     """
     data = {"Samples": {}, "Integration Metadata": {}}
     sample_dir = _sample_data_dir(output_path)
@@ -378,6 +384,8 @@ def load_json(output_path, list_samples=False, list_processed=False):
             sample_name = sample.get("Sample Name", sample_file.stem)
             integration_metadata = sample.pop("Integration Metadata", None)
             sample.pop("Sample Name", None)
+            if not is_processed_sample(sample):
+                continue
             data["Samples"][sample_name] = sample
             if integration_metadata and not data["Integration Metadata"]:
                 data["Integration Metadata"] = integration_metadata
@@ -392,29 +400,7 @@ def load_json(output_path, list_samples=False, list_processed=False):
                         key.append(x)
                 print(key)
             return data
-
-    js_file = os.path.join(output_path, "FID_output.json")
-    if not os.path.exists(js_file):
-        return None
-
-    with open(js_file, "r") as f:
-        data = json.load(f)
-
-    # rebuild Raw Data dicts into DataFrames
-    for sample in data.get("Samples", {}).values():
-        raw = sample.get("Raw Data")
-        if isinstance(raw, dict):
-            sample["Raw Data"] = pd.DataFrame(raw)
-    if list_samples:
-        for key in data['Samples'].keys():
-            print(key)
-    if list_processed:
-        key = []
-        for x in data['Samples'].keys():
-            if 'Processed Data' in data['Samples'][x].keys():
-                key.append(x)
-        print(key)
-    return data
+    return None
 
 
 # def create_output_folders(folder_path):

@@ -574,17 +574,8 @@ def integration_file_status(config: IntegrationConfiguration) -> dict:
                 except Exception:
                     sample_data = {}
                 sample_name = sample_data.get("Sample Name", sample_file.stem)
-                if isinstance(sample_data, dict) and "Processed Data" in sample_data:
-                    processed_names.add(str(sample_name))
-        legacy_results_file_path = output_path / "FID_output.json"
-        if legacy_results_file_path.exists():
-            try:
-                with legacy_results_file_path.open("r", encoding="utf-8") as handle:
-                    existing = json.load(handle)
-            except Exception:
-                existing = {}
-            for sample_name, sample_data in existing.get("Samples", {}).items():
-                if isinstance(sample_data, dict) and "Processed Data" in sample_data:
+                processed = sample_data.get("Processed Data") if isinstance(sample_data, dict) else None
+                if isinstance(processed, dict) and bool(processed):
                     processed_names.add(str(sample_name))
         return {
             "total_files": len(sample_names),
