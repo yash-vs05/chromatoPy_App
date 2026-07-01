@@ -15,6 +15,7 @@ def default_settings_memory() -> dict:
         "schema_version": MEMORY_SCHEMA_VERSION,
         "compound_histories": [],
         "integration_configuration": {},
+        "theme": "light",
     }
 
 
@@ -40,6 +41,15 @@ def save_settings_memory(memory: dict) -> None:
     current["schema_version"] = MEMORY_SCHEMA_VERSION
     MEMORY_PATH.write_text(json.dumps(current, indent=2), encoding="utf-8")
 
+def load_theme() -> str:
+    memory = load_settings_memory()
+    theme = memory.get("theme", "light")
+    return theme if theme in {"light", "dark"} else "light"
+
+def save_theme(theme: str) -> None:
+    if theme not in {"light", "dark"}:
+        theme = "light"
+    save_settings_memory({"theme": theme})
 
 def list_compound_histories() -> list[list[str]]:
     memory = load_settings_memory()

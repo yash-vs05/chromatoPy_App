@@ -1,6 +1,8 @@
 """PySide6 desktop views for chromatoPy."""
 
 from __future__ import annotations
+from .settings_memory import load_theme, save_theme
+from .themes import LIGHT_APP_STYLE, DARK_APP_STYLE
 
 import copy
 
@@ -79,7 +81,7 @@ class IntegrationConfigurationDialog(QDialog):
         self.input_folder_edit.textChanged.connect(self._folder_text_changed)
         self.input_folder_edit.editingFinished.connect(self._refresh_from_folder)
         folder_row.addWidget(self.input_folder_edit, 1)
-        browse_button = QPushButton("1. Browse")
+        browse_button = QPushButton("Browse")
         browse_button.clicked.connect(self._browse_input_folder)
         folder_row.addWidget(browse_button)
         layout.addLayout(folder_row)
@@ -155,7 +157,7 @@ class IntegrationConfigurationDialog(QDialog):
         edit_meta_row = QHBoxLayout()
         edit_meta_row.addWidget(QLabel("Multi-channel compound mapping"))
         edit_meta_row.addStretch(1)
-        self.edit_hplc_button = QPushButton("2. Edit Sample Groups")
+        self.edit_hplc_button = QPushButton("Edit Sample Groups")
         self.edit_hplc_button.clicked.connect(self._edit_hplc_meta)
         edit_meta_row.addWidget(self.edit_hplc_button)
         hplc_layout.addLayout(edit_meta_row)
@@ -258,10 +260,18 @@ class IntegrationConfigurationDialog(QDialog):
         self.shared_settings_widget = QWidget()
         self.shared_settings_widget.setLayout(shared_grid)
         layout.addWidget(self.shared_settings_widget)
+
+        opt_button_row = QHBoxLayout()
+        default_button = QPushButton("Revert to Default")
+        default_button.clicked.connect(self._revert_to_default)
+        opt_button_row.addWidget(default_button)
+        opt_button_row.addStretch()
         buttons = QDialogButtonBox(QDialogButtonBox.Cancel | QDialogButtonBox.Save)
         buttons.accepted.connect(self._accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        opt_button_row.addWidget(buttons)
+        layout.addLayout(opt_button_row)
+
 
         self._reload_histories()
         self._update_folder_placeholder_style(self.input_folder_edit.text())
@@ -380,15 +390,15 @@ class IntegrationConfigurationDialog(QDialog):
         is_general = self._config.mode == "General"
         is_hplc = self._config.mode == "HPLC"
         is_fid = self._config.mode == "FID"
-        has_folder = bool(self.input_folder_edit.text().strip())
+        #has_folder = bool(self.input_folder_edit.text().strip())
         self.general_section.setVisible(is_general)
         self.hplc_section.setVisible(is_hplc)
         self.fid_section.setVisible(is_fid)
-        self.general_section.setEnabled(has_folder)
-        self.hplc_section.setEnabled(has_folder)
-        self.fid_section.setEnabled(has_folder)
-        self.shared_settings_widget.setEnabled(has_folder)
-        self.summary_box.setEnabled(has_folder)
+        self.general_section.setEnabled(True)
+        self.hplc_section.setEnabled(True)
+        self.fid_section.setEnabled(True)
+        self.shared_settings_widget.setEnabled(True)
+        self.summary_box.setEnabled(True)
         self._sync_general_fit_controls(self.deconvolution_checkbox.isChecked())
 
     def _sync_general_fit_controls(self, deconvolution_enabled: bool):
@@ -437,11 +447,44 @@ class IntegrationConfigurationDialog(QDialog):
             return
         self.summary_box.setPlainText(summarize_integration_configuration(self._config))
 
+    def _config_helper(self):
+        self.mode_label.setText(f"Processing Mode: {self._config.mode}")
+        self.input_folder_edit.setText(self._config.input_folder)
+
+        self.general_compounds_edit.setText(", ".join(self._config.general_compounds))
+        self.general_window_start_spin.setValue(self._config.general_window[0])
+        self.general_window_end_spin.setValue(self._config.general_window[1])
+
+        self.asymmetric_checkbox.setChecked(self._config.use_asymmetric_peak_integration)
+        self.deconvolution_checkbox.setChecked(self._config.enable_peak_deconvolution)
+        self.hplc_normalization_checkbox.setChecked(self._config.normalize_by_standard)
+
+        fid_method_index = self.fid_peak_method_combo.findData(self._config.fid_peak_integration_method)
+        if fid_method_index >= 0:
+            self.fid_peak_method_combo.setCurrentIndex(fid_method_index)
+        self.fid_window_xmin_edit.setText("" if self._config.fid_window_xmin is None else str(self._config.fid_window_xmin))
+        self.fid_window_xmax_edit.setText("" if self._config.fid_window_xmax is None else str(self._config.fid_window_xmax))
+        self.fid_window_ymin_edit.setText("" if self._config.fid_window_ymin is None else str(self._config.fid_window_ymin))
+        self.fid_window_ymax_edit.setText("" if self._config.fid_window_ymax is None else str(self._config.fid_window_ymax))
+
+        self.peak_neighborhood_spin.setValue(self._config.peak_neighborhood_n)
+        self.smoothing_window_spin.setValue(self._config.smoothing_window)
+        self.smoothing_factor_spin.setValue(self._config.smoothing_factor)
+        self.gaussian_iterations_spin.setValue(self._config.gaus_iterations)
+        self.minimum_peak_spin.setValue(self._config.minimum_peak_amplitude if self._config.minimum_peak_amplitude is not None else -1.0)
+        self.maximum_peak_spin.setValue(self._config.maximum_peak_amplitude or 0.0)
+        self.peak_boundary_spin.setValue(self._config.peak_boundary_derivative_sensitivity)
+        self.peak_prominence_spin.setValue(self._config.peak_prominence)
+        self.clip_negative_checkbox.setChecked(self._config.clip_negative_amplitudes)
+        self._update_folder_placeholder_style(self.input_folder_edit.text())
+        self._sync_general_fit_controls(self.deconvolution_checkbox.isChecked())
+        self._refresh_from_folder()
+
     def _accept(self):
         self._config.input_folder = self.input_folder_edit.text().strip()
-        if not self._config.input_folder:
-            QMessageBox.warning(self, "Missing folder", "Select an input folder before continuing.")
-            return
+        # if not self._config.input_folder:
+        #     QMessageBox.warning(self, "Missing folder", "Select an input folder before continuing.")
+        #     return
 
         self._config.peak_neighborhood_n = self.peak_neighborhood_spin.value()
         self._config.smoothing_window = self.smoothing_window_spin.value()
@@ -496,6 +539,14 @@ class IntegrationConfigurationDialog(QDialog):
 
         refresh_integration_config(self._config)
         self.accept()
+
+    def _revert_to_default(self):
+        current_mode = self._config.mode
+        current_folder = self.input_folder_edit.text()
+        self._config = IntegrationConfiguration()
+        self._config.mode = current_mode
+        self._config.input_folder = current_folder
+        self._config_helper()
 
     def configuration(self) -> IntegrationConfiguration:
         return copy.deepcopy(self._config)
@@ -626,6 +677,7 @@ class PeakIntegrationPage(ModulePage):
 
     def _mode_changed(self, mode: str):
         self.current_config.mode = mode
+        self.current_config.input_folder = ""
         self._update_mode_controls()
         self._refresh_summary()
 
@@ -825,6 +877,15 @@ class ChromatoPyMainWindow(QMainWindow):
         version.setObjectName("appVersion")
         title_row.addWidget(version)
         title_row.addStretch(1)
+
+        self.dark_mode = load_theme() == "dark"
+        self.theme_button = QPushButton()
+        self.theme_button.setFixedSize(42, 42)
+        self.theme_button.clicked.connect(self.toggle_theme)
+        self.update_theme_button()
+
+        title_row.addWidget(self.theme_button)
+
         root_layout.addLayout(title_row)
 
         subtitle = QLabel(
@@ -886,6 +947,24 @@ class ChromatoPyMainWindow(QMainWindow):
         launch_button.clicked.connect(on_click)
         layout.addWidget(launch_button)
         return card
+
+    def toggle_theme(self):
+        self.dark_mode = not self.dark_mode
+
+        theme = "dark" if self.dark_mode else "light"
+        save_theme(theme)
+
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(DARK_APP_STYLE if self.dark_mode else LIGHT_APP_STYLE)
+
+        self.update_theme_button()
+
+    def update_theme_button(self):
+        self.theme_button.setText("☀️" if self.dark_mode else "🌙")
+        self.theme_button.setToolTip(
+            "Switch to light mode" if self.dark_mode else "Switch to dark mode"
+        )
 
     def show_dashboard(self):
         self.dashboard.show()
