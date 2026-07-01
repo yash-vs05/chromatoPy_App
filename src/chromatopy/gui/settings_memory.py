@@ -12,7 +12,7 @@ MEMORY_PATH = Path.home() / ".chromatopy_gui_memory.json"
 
 def default_settings_memory() -> dict:
     return {
-        "schema_version": MEMORY_SCHEMA_VERSION,
+        # "schema_version": MEMORY_SCHEMA_VERSION,
         "compound_histories": [],
         "integration_configuration": {},
         "theme": "light",
