@@ -87,11 +87,11 @@ def hplc_integration(folder_path=None,
     if folder_path is None:
         raise ValueError("A folder path is required for interactive integration.")
 
-    detected_schema = detect_data_schema(folder_path)
     if schema_type is None:
+        detected_schema = detect_data_schema(folder_path)
         schema_type = detected_schema.schema_type
-    if time_column is None:
-        time_column = detected_schema.time_column
+        if time_column is None:
+            time_column = detected_schema.time_column
 
     display_introduction_message()
 
@@ -113,7 +113,6 @@ def hplc_integration(folder_path=None,
             window_bounds=single_channel_window,
         )
         edit_metadata = False
-
     folder_info       = folder_handling(folder_path, gdgt_meta_set=gdgt_meta_set, edit_metadata=edit_metadata)
     folder_path       = folder_info["folder_path"]
     csv_files         = folder_info["csv_files"]
