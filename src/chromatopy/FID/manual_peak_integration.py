@@ -31,7 +31,7 @@ from ..qt_compat import (
 
 # ─── Peak Integration ─────────────────────────────────────────────────────────
 from .FID_Integration_functions import run_peak_integrator, smoother, hplc_style_baseline, find_valleys, find_peak_neighborhood_boundaries, fit_gaussians
-    
+
 def run_peak_integrator_manual(data, key, gi, pk_sns, smoothing_params, max_peaks_for_neighborhood, fp, gaussian_fit_mode, minimum_peak_amplitude=None, peak_prominence=0.001):
     # Setup data
     md = data['Integration Metadata']
@@ -87,12 +87,8 @@ def run_peak_integrator_manual(data, key, gi, pk_sns, smoothing_params, max_peak
         owns_app = True
     
     if owns_app:
-        peak_selector.fig.show()
         run_application(app)
     else:
-        peak_selector.fig.show()
-        peak_selector.fig.canvas.draw_idle()
-        QApplication.processEvents()
         loop = QEventLoop()
         peak_selector.on_done = loop.quit
         peak_selector.fig.canvas.mpl_connect("close_event", lambda event: loop.quit())
@@ -397,7 +393,7 @@ class ManualPeakIntegrator:
 
     def on_key(self, event):
         key = event.key.lower()
-        if key in ('shift+delete','shift+del','shift+backspace') and self.index > 0:
+        if key == 'd' and self.index > 0:
             # undo
             self.index -= 1
             label = self.labels[self.index]
