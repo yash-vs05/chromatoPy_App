@@ -220,26 +220,29 @@ def refresh_integration_config(config: IntegrationConfiguration) -> IntegrationC
         config.schema_type = "fid_text"
         return config
 
-    schema = detect_data_schema(config.input_folder)
-    config.schema_type = schema.schema_type
-    config.time_column = schema.time_column
-    config.signal_columns = schema.signal_columns
-
     if config.mode == "General":
-        time_header, signal_header = detect_general_headers(config.input_folder)
+        config.schema_type = "single_channel"
+        options, detected_time, detected_signal = collect_general_header_options(config.input_folder)
+
+        # Keep a user-entered value when it is already present.
         if not config.general_time_header:
-            config.general_time_header = time_header
+            config.general_time_header = detected_time
         if not config.general_signal_header:
-            config.general_signal_header = signal_header
-        if not config.general_compounds:
+            config.general_signal_header = detected_signal
+        if not config.general_compounds and config.general_signal_header:
             config.general_compounds = [config.general_signal_header]
         if not config.reference_trace:
             config.reference_trace = config.general_signal_header
-        if not config.reference_compound:
+        if not config.reference_compound and config.general_compounds:
             config.reference_compound = config.general_compounds[0]
         if config.reference_window == [10.0, 30.0]:
             config.reference_window = list(config.general_window)
         return config
+
+    schema = detect_data_schema(config.input_folder)
+    config.schema_type = schema.schema_type
+    config.time_column = schema.time_column
+    config.signal_columns = schema.signal_columns
 
     if not config.reference_trace and config.gdgt_meta_set["Trace"]:
         config.reference_trace = config.gdgt_meta_set["Trace"][0][0]
