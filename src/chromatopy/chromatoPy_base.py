@@ -61,6 +61,8 @@ class GDGTAnalyzer:
         self._wait_loop = None
         self._wait_timer = None
         self._status_text = None
+        self.b_pressed = False
+        self.no_baseline_lines = {}
 
 
     def run(self):
@@ -1708,17 +1710,20 @@ class GDGTAnalyzer:
             y_bcorr[y_bcorr < 0] = 0
         y_filtered = self.smoother(y_bcorr)
 
+
         # Store the full processed data for later updates
         if not hasattr(self, "full_data"):
             self.full_data = {}
         self.full_data[trace_idx] = (x_values, y_filtered)
 
-        # Plot the full data; even if the current x-limits are restricted, we plot everything
-        ax.plot(x_values, y, c='grey', alpha=0.3)
+        # Plot the full data; even if the current x-limits are restricted, we plot everything but the x-values without baseline correction are hidden.
+        no_baseline_line, = ax.plot(x_values, y, c='grey', alpha=0.3)
+        no_baseline_line.set_visible(self.b_pressed)
         line, = ax.plot(x_values, y_filtered, "k")
         if not hasattr(self, "line_objects"):
             self.line_objects = {}
         self.line_objects[trace_idx] = line
+        self.no_baseline_lines[trace_idx] = no_baseline_line
 
         # Set the current x-limits based on the current window_bounds
         ax.set_xlim(self.window_bounds)
@@ -2124,6 +2129,7 @@ class GDGTAnalyzer:
         -----
         - "Enter": Calls `collect_peak_data()` to finalize peak selection and closes the figure to resume script execution.
         - "d": Calls `undo_last_action()` to undo the most recent action.
+        - "b": Toggles display of the original signal before baseline correction.
         - "e": Reserved for future expansion (currently does nothing).
         - "up" and "down": Navigates between subplots using the up and down arrow keys, and highlights the selected subplot.
         - "r": Clears the peaks in the currently highlighted subplot by calling `clear_peaks_subplot()` and removes corresponding entries from `self.integrated_peaks` and `self.peak_results`.
@@ -2147,6 +2153,11 @@ class GDGTAnalyzer:
             plt.close(self.fig)  # Close the figure to resume script execution
         elif event.key == "d":
             self.undo_last_action()
+        elif event.key == "b":
+            self.b_pressed = not self.b_pressed
+            for no_baseline_line in self.no_baseline_lines.values():
+                no_baseline_line.set_visible(self.b_pressed)
+            self.fig.canvas.draw_idle()
         elif event.key in ["up", "down"]:
             # Handle subplot navigation with up and down arrow keys
             if event.key == "up":
